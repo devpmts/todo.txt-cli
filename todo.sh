@@ -426,11 +426,12 @@ replaceOrPrepend()
   getTodo "$item"
 
   if [[ -z "$1" && $TODOTXT_FORCE = 0 ]]; then
-    echo -n "$querytext"
-    read -e -r input
+#    echo -n "$querytext"
+    read -e -r -p  "" -i "$todo" input
   else
     input=$*
   fi
+
 
   # Retrieve existing priority and prepended date
   local -r priAndDateExpr='^\((.) \)\{0,1\}\([0-9]\{2,4\}-[0-9]\{2\}-[0-9]\{2\} \)\{0,1\}'
@@ -834,6 +835,7 @@ filtercommand()
     printf %s "$filter"
 }
 
+
 _list() {
     local FILE="$1"
     ## If the file starts with a "/" use absolute path. Otherwise,
@@ -936,6 +938,8 @@ _format()
                     if (ENVIRON["HIDE_PRIORITY_SUBSTITUTION"] != "") {
                         $0 = substr($0, 1, RLENGTH - 4) substr($0, RSTART + RLENGTH)
                     }
+                } else {
+                	clr=highlight("DEFAULT")
                 }
                 end_clr = (clr ? highlight("DEFAULT") : "")
 
@@ -954,6 +958,10 @@ _format()
                         printf "%s", prj_beg words[i] prj_end
                     } else if (words[i] ~ /^[@].*[A-Za-z0-9_]$/) {
                         printf "%s", ctx_beg words[i] ctx_end
+                    } else if (words[i] ~ "note:"){ 
+                    	end_clr=highlight("LIGHT_GREY")
+#                    	"\033[9mstrikethrough"
+                        printf "%s", words[i]
                     } else {
                         printf "%s", words[i]
                     }
@@ -968,6 +976,22 @@ _format()
           '''                                                   \
         | eval ${TODOTXT_FINAL_FILTER}                          \
     )
+    if [ -n "$SHOW_NOTE" ]
+    	then
+		    while read -r line; 
+    			do 
+    				note=$(echo $line | grep -ho "note:.\{3\}$TODO_NOTE_EXT" | sed "s/note:\(.\{3\}$TODO_NOTE_EXT\)/\1/g") 
+	   				if [ -n "$note" ]; then
+	    				sed  "/${note}/r $TODO_DIR/notes/${note}" <<< $line
+	    				printf "\n"
+#	    				sed  "s/${note}/$(noteFile=\"${note}\" cat $TODO_DIR/notes/$noteFile)/g" <<< $line
+	    			else 
+	    				echo $line
+	    			fi
+			    done <<< $filtered_items
+#	        printf "\\$DEFAULT\n"
+	        exit 0
+        fi
     [ "$filtered_items" ] && echo "$filtered_items"
 
     if [ $TODOTXT_VERBOSE -gt 0 ]; then
@@ -989,7 +1013,7 @@ listWordsWithSigil()
     eval "$(filtercommand 'cat "${FILE[@]}"' '' "$@")" | grep -o "[^ ]*${sigil}[^ ]\\+" | grep "^$sigil" | sort -u
 }
 
-export -f cleaninput getPrefix getTodo getNewtodo shellquote filtercommand _list listWordsWithSigil getPadding _format die
+export -f cleaninput getPrefix getTodo getNewtodo replaceOrPrepend shellquote filtercommand _list listWordsWithSigil getPadding _format die 
 
 # == HANDLE ACTION ==
 action=$( printf "%s\n" "$ACTION" | tr 'A-Z' 'a-z' )
@@ -1240,6 +1264,12 @@ case $action in
     _list "$TODO_FILE" "$@"
     ;;
 
+"listn" | "lsn" )
+	SHOW_NOTE=TRUE
+    shift  ## Was ls; new $1 is first search term
+    _list "$TODO_FILE" "$@"
+    ;;
+
 "listall" | "lsa" )
     shift  ## Was lsa; new $1 is first search term
 
@@ -1371,8 +1401,9 @@ note: PRIORITY must be anywhere from A to Z."
     fi
     ;;
 
-"replace" )
+"replace" | "r" )
     errmsg="usage: $TODO_SH replace ITEM# \"UPDATED ITEM\""
+    TODOTXT_FORCE=0
     replaceOrPrepend 'replace' "$@"
     ;;
 
